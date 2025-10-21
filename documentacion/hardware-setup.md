@@ -17,7 +17,7 @@ Guía completa de conexión y configuración del hardware para el sistema de cad
 ### Esquema Eléctrico
 M5StickCPlus2 → YRM1001
 
-![](imagenes/ejemplo-conexion.png)
+![](imagenes/ejemplo-conexion.jpg)
 
 
 ### Código de Colores Recomendado
