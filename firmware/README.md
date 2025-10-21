@@ -36,20 +36,27 @@ M5StickCPlus2 → YRM1001
 ### 1. Configuración WiFi
 
 // En el archivo firmware/m5stick_rfid.ino
+
 `const char* ssid = "TU_WIFI_SSID";`
+
 `const char* password = "TU_WIFI_PASSWORD";`
 
 ### 2. Configuración MQTT
 
 `const char* mqtt_server = "192.168.1.100";  // IP de tu PC con el broker`
+
 `const int mqtt_port = 1883;`
+
 `const char* mqtt_topic = "rfid/tags";`
+
 `const char* mqtt_client_id = "M5StickCPlus2_RFID";`
 
 ### 3. Configuración RFID
 
 `const int UHF_RX_PIN = 32;   // GPIO32 para RX`
+
 `const int UHF_TX_PIN = 33;   // GPIO33 para TX`
+
 `const unsigned long UHF_BAUD = 115200;`
 
 ## 📦 Instalación Paso a Paso
