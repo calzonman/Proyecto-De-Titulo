@@ -17,7 +17,7 @@ Guía completa de conexión y configuración del hardware para el sistema de cad
 ### Esquema Eléctrico
 M5StickCPlus2 → YRM1001
 
-![](imagenes/ejemplo-conexion.jpg)
+![](../imagenes/ejemplo-conexion.jpg)
 
 
 ### Código de Colores Recomendado
@@ -30,12 +30,12 @@ M5StickCPlus2 → YRM1001
 
 ### Paso 1: Identificar los Pines del M5StickCPlus2 
 
-![](imagenes/m5stick-pines.png)
+![](../imagenes/m5stick-pines.png)
 
 ### Paso 2: Identificar los Pines  del modulo YRM1001
 
-![](imagenes/modulo-YRM1001.png)
-![](imagenes/tabla-YRM1001.png)
+![](../imagenes/modulo-YRM1001.png)
+![](../imagenes/tabla-YRM1001.png)
 
 ### Paso 3: Realizar las Conexiones
 
