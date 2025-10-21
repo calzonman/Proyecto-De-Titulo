@@ -1,5 +1,5 @@
 
-insertar imagen de la arquitectura
+![](imagenes/arquitectura.png)
 
 ## Componentes
 
