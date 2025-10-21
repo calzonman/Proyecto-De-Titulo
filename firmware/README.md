@@ -23,11 +23,11 @@ Firmware para el dispositivo M5StickCPlus2 que lee tags RFID del módulo YRM1001
 ## 🔌 Diagrama de Conexiones
 M5StickCPlus2 → YRM1001
 
-colocar imagen
+**AGREGAR IMAGEN**
 
 **Código de colores recomendado:**
 - 🔴 **Rojo:** 3.3V → VCC
-- ⚫ **Negro:** GND → GND  
+- ⚫ **Azul:** GND → GND  
 - 🟢 **Verde:** G32 → TX
 - 🟡 **Amarillo:** G33 → RX
 
