@@ -29,7 +29,7 @@ Sistema IoT integral para monitoreo y trazabilidad en tiempo real de productos p
 
 ## 🏗️ Arquitectura del Sistema
 
-**colocar imagen de la arquitectura**
+![](imagenes/arquitectura.png)
 
 ## 🛠️ Tecnologías Utilizadas
 | Capa | Tecnologías | Propósito |
