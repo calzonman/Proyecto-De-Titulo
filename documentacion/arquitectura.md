@@ -1,5 +1,5 @@
 
-![](imagenes/arquitectura.png)
+![](../imagenes/arquitectura.png)
 
 ## Componentes
 
