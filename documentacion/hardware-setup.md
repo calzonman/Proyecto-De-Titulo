@@ -17,12 +17,12 @@ Guía completa de conexión y configuración del hardware para el sistema de cad
 ### Esquema Eléctrico
 M5StickCPlus2 → YRM1001
 
-(**insertar imagen**)
+![](imagenes/ejemplo-conexion.png)
 
 
 ### Código de Colores Recomendado
 - 🔴 **Rojo:** 3.3V → VCC (Alimentación)
-- ⚫ **Negro:** GND → GND (Tierra)
+- ⚫ **Azul:** GND → GND (Tierra)
 - 🟢 **Verde:** G32 → TX (Transmisión de datos)
 - 🟡 **Amarillo:** G33 → RX (Recepción de datos)
 
@@ -30,11 +30,12 @@ M5StickCPlus2 → YRM1001
 
 ### Paso 1: Identificar los Pines del M5StickCPlus2 
 
-(**insertar imagen**)
+![](imagenes/m5stick-pines.png)
 
 ### Paso 2: Identificar los Pines  del modulo YRM1001
 
-(**insertar imagen**)
+![](imagenes/modulo-YRM1001.png)
+![](imagenes/tabla-YRM1001.png)
 
 ### Paso 3: Realizar las Conexiones
 
