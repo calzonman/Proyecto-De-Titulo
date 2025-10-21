@@ -21,7 +21,7 @@ M5StickCPlus2 → YRM1001
 
 
 ### Código de Colores Recomendado
-- 🔴 **Rojo:** 3.3V → VCC (Alimentación)
+- 🔴 **Rojo:** 5V → VCC (Alimentación)
 - ⚫ **Azul:** GND → GND (Tierra)
 - 🟢 **Verde:** G32 → TX (Transmisión de datos)
 - 🟡 **Amarillo:** G33 → RX (Recepción de datos)
