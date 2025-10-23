@@ -6,7 +6,7 @@
 ### 1. Capa IoT (Dispositivos)
 - **M5StickCPlus2:** Microcontrolador ESP32-S3
 - **YRM1001:** Lector RFID UHF
-- **Protocolo:** MQTT sobre WiFi
+- **Protocolo:** UART
 
 ### 2. Capa de Comunicación
 - **Broker MQTT:** Mosquitto
