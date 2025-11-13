@@ -65,6 +65,7 @@ Navega a la carpeta del frontend e instala los paquetes necesarios:
 Bash:
 
 `cd frontend`
+
 `npm install`
 
 ### Paso 2: Configurar Variables de Entorno
