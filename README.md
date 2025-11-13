@@ -23,9 +23,9 @@ Sistema IoT integral para monitoreo y trazabilidad en tiempo real de productos p
 | Comunicación MQTT en tiempo real | ✅ MVP | Datos instantáneos |
 | Almacenamiento en MongoDB Cloud | ✅ MVP | Acceso remoto a datos |
 | API REST documentada | ✅ MVP | Integración sencilla |
-| Monitoreo continuo de temperatura | 🔄 En desarrollo | Detectar rupturas de cadena de frío |
-| Dashboard interactivo | 🔄 En desarrollo | Visualización intuitiva |
-| Alertas automáticas | 🔄 En desarrollo | Notificaciones inmediatas |
+| Monitoreo continuo de temperatura | ✅ MVP | Detectar rupturas de cadena de frío |
+| Dashboard interactivo | ✅ MVP | Visualización intuitiva |
+| Alertas automáticas | ✅ MVP | Notificaciones inmediatas |
 
 ## 🏗️ Arquitectura del Sistema
 
@@ -78,7 +78,7 @@ Proyecto-De-Titulo/
 
 🔄 EN DESARROLLO
 
-1. Frontend Angular con dashboard
+1. Frontend React con dashboard
 
 3. Sistema de alertas y notificaciones
 
@@ -105,3 +105,12 @@ Proyecto-De-Titulo/
 3. Cumplimiento de normativas sanitarias
 
 5. Auditoría automática de condiciones
+
+## 📚 Documentación Detallada
+
+Para profundizar en cada módulo, consulta nuestras guías oficiales:
+
+* 🛠️ **[Guía de Configuración de Hardware](docs/hardware-setup.md)**: Diagramas de conexión y pinout del M5Stick y YRM1001.
+* 💻 **[Guía de Instalación Paso a Paso](docs/instalacion.md)**: Despliegue del Backend, Base de Datos y configuración del entorno.
+* 📡 **[Documentación del Firmware](firmware/README.md)**: Detalles técnicos del código C++ para ESP32.
+* 🚀 **[Documentación del Backend](backend/README.md)**: Endpoints de la API y modelos de datos.
