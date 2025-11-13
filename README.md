@@ -76,13 +76,11 @@ Proyecto-De-Titulo/
 
 13. Manejo de errores robusto
 
-🔄 EN DESARROLLO
+15. Frontend React con dashboard
 
-1. Frontend React con dashboard
+17. Sistema de alertas
 
-3. Sistema de alertas y notificaciones
-
-5. Lectura de datos de temperatura
+19. Lectura de datos de temperatura
 
 ## 🎯 Casos de Uso
 ### 🏭 Almacenes de Productos Perecederos
