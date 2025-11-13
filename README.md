@@ -108,7 +108,7 @@ Proyecto-De-Titulo/
 
 Para profundizar en cada módulo, consulta nuestras guías oficiales:
 
-* 🛠️ **[Guía de Configuración de Hardware](docs/hardware-setup.md)**: Diagramas de conexión y pinout del M5Stick y YRM1001.
-* 💻 **[Guía de Instalación Paso a Paso](docs/instalacion.md)**: Despliegue del Backend, Base de Datos y configuración del entorno.
+* 🛠️ **[Guía de Configuración de Hardware](documentacion/hardware-setup.md)**: Diagramas de conexión y pinout del M5Stick y YRM1001.
+* 💻 **[Guía de Instalación Paso a Paso](documentacion/instalacion.md)**: Despliegue del Backend, Base de Datos y configuración del entorno.
 * 📡 **[Documentación del Firmware](firmware/README.md)**: Detalles técnicos del código C++ para ESP32.
 * 🚀 **[Documentación del Backend](backend/README.md)**: Endpoints de la API y modelos de datos.
