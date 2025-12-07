@@ -1,5 +1,5 @@
 // src/App.tsx
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type MouseEvent } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "./components/ui/avatar";
 import { Badge } from "./components/ui/badge";
@@ -16,16 +16,19 @@ import { fetchLecturasRecientes, fetchLecturasPorEPC, Lectura } from "./services
 import { fetchProductoByUID, fetchProductosWithLastReading, createProducto } from "./services/productos";
 import { fetchUnassociatedTags, associateUidToProduct } from "./services/sensores";
 
-// ---- Types primero (ChartPoint antes de usarlo) ----
+// ---- CONSTANTES ----
+const REFRESH_INTERVAL = 1000; // Actualizar cada 1 segundos
+
+// ---- TYPES ----
 type ChartPoint = { time: string; temp: number };
 
 type RegisteredProduct = {
-  id: string;                 // usamos el _id del backend
+  id: string;
   name: string;
-  tempRange: string;          // "2–8 °C"
-  lastRegistration: string;   // hora exacta formateada
-  registeredAt: string;       // "hace 3 min"
-  sensorUID: string;          // uid_etiqueta
+  tempRange: string;
+  lastRegistration: string;
+  registeredAt: string;
+  sensorUID: string;
   status: 'normal' | 'warning';
   temperatureData?: ChartPoint[];
 };
@@ -38,7 +41,7 @@ type UnassociatedSensor = {
   battery?: number 
 };
 
-// ---- Defaults seguros (evitan ReferenceError en el render) ----
+// ---- DEFAULTS ----
 const userData = { name: "Usuario", avatar: "" };
 
 // Utilidad "hace cuánto"
@@ -56,34 +59,77 @@ function fromNow(dateISO: string) {
   return rtf.format(-sec, 'second');
 }
 
-function formatDateTime(d?: string | null) {
-  if (!d) return "—";
-  return new Date(d).toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' });
-}
-
 export default function App() {
-  // === Sección 1: Último registro ===
+  // === Sección 1: Último registro (Auto-actualizable) ===
   const [latest, setLatest] = useState<Lectura | null>(null);
   const [latestSeries, setLatestSeries] = useState<ChartPoint[]>([]);
   const [latestProductName, setLatestProductName] = useState<string>('');
   const [loadingLatest, setLoadingLatest] = useState(false);
   const [errorLatest, setErrorLatest] = useState<string | null>(null);
 
-  // === Productos Registrados ===
+  useEffect(() => {
+    async function loadLatest(isBackground = false) {
+      // Solo mostramos loading si no es actualización de fondo y no hay datos
+      if (!isBackground && !latest) setLoadingLatest(true);
+      // No reseteamos el error en background para no parpadear
+      if (!isBackground) setErrorLatest(null);
+
+      try {
+        const lecturas = await fetchLecturasRecientes();
+        if (!lecturas.length) {
+          if (!isBackground) setLatest(null); 
+          return;
+        }
+        const ultima = lecturas[0];
+        setLatest(ultima);
+
+        try {
+          const prod = await fetchProductoByUID(ultima.uid_etiqueta);
+          setLatestProductName(prod.nombre);
+        } catch {
+          setLatestProductName(ultima.uid_etiqueta); 
+        }
+
+        const porEpc = await fetchLecturasPorEPC(ultima.uid_etiqueta);
+        const top4 = porEpc
+          .filter(l => l.temperatura != null)
+          .slice(0, 4)     
+          .reverse();      
+
+        setLatestSeries(
+          top4.map(l => ({
+            time: new Date(l.timestamp).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }),
+            temp: Number(l.temperatura),
+          }))
+        );
+      } catch (e: any) {
+        // Solo mostramos error visual si es carga inicial
+        if (!isBackground) setErrorLatest(e?.message || 'Error cargando último registro');
+      } finally {
+        if (!isBackground) setLoadingLatest(false);
+      }
+    }
+
+    loadLatest(); // Carga inicial
+    const intervalId = setInterval(() => loadLatest(true), REFRESH_INTERVAL);
+    return () => clearInterval(intervalId);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // === Productos Registrados (Auto-actualizable) ===
   const [products, setProducts] = useState<RegisteredProduct[]>([]);
   const [productsLoading, setProductsLoading] = useState(false);
   const [productsError, setProductsError] = useState<string | null>(null);
   const [isProductsDialogOpen, setIsProductsDialogOpen] = useState(false);
 
-  async function loadProducts() {
-    setProductsLoading(true);
-    setProductsError(null);
+  async function loadProducts(isBackground = false) {
+    if (!isBackground) setProductsLoading(true);
+    if (!isBackground) setProductsError(null);
     try {
       const raw = await fetchProductosWithLastReading();
       const mapped: RegisteredProduct[] = raw.map((p) => {
         const min = p.rango_temp?.min;
         const max = p.rango_temp?.max;
-        const tempRange = (min != null && max != null) ? `${min}–${max} °C` : "—";
+        const tempRange = (min != null && max != null) ? `${min}°C - ${max}°C` : "—";
         const last = p.lastReadingTimestamp || null;
         const estado = (p.lastEstado === "OK") ? "normal" : "warning";
         return {
@@ -100,27 +146,28 @@ export default function App() {
       });
       setProducts(mapped);
     } catch (e: any) {
-      setProductsError(e?.message || "No se pudieron cargar los productos");
-      // Importante: NO vaciamos la lista si falla
+      if (!isBackground) setProductsError(e?.message || "No se pudieron cargar los productos");
     } finally {
-      setProductsLoading(false);
+      if (!isBackground) setProductsLoading(false);
     }
   }
 
   useEffect(() => {
-    // Carga estable al montar
     loadProducts();
+    const intervalId = setInterval(() => loadProducts(true), REFRESH_INTERVAL);
+    return () => clearInterval(intervalId);
   }, []);
 
   function handleProductsDialogOpenChange(v: boolean) {
     setIsProductsDialogOpen(v);
-    if (v) loadProducts(); // refresca al abrir
+    if (v) loadProducts(false); 
   }
 
-  // === Sensores sin asociar ===
+  // === Sensores sin asociar (Auto-actualizable) ===
   const [unassociatedSensors, setUnassociatedSensors] = useState<UnassociatedSensor[]>([]);
+  
   useEffect(() => {
-    (async () => {
+    async function fetchSensors() {
       try {
         const tags = await fetchUnassociatedTags();
         const mapped: UnassociatedSensor[] = tags.map(t => ({
@@ -133,62 +180,16 @@ export default function App() {
         setUnassociatedSensors(mapped);
       } catch (e) {
         console.error(e);
-        setUnassociatedSensors([]);
-      }
-    })();
-  }, []);
-
-  // === Último registro: carga datos y serie ===
-  useEffect(() => {
-    async function load() {
-      setLoadingLatest(true);
-      setErrorLatest(null);
-      try {
-        // 1) última lectura
-        const lecturas = await fetchLecturasRecientes();
-        if (!lecturas.length) {
-          setLatest(null);
-          setLatestSeries([]);
-          setLatestProductName('');
-          return;
-        }
-        const ultima = lecturas[0];
-        setLatest(ultima);
-
-        // 2) nombre del producto por EPC
-        try {
-          const prod = await fetchProductoByUID(ultima.uid_etiqueta);
-          setLatestProductName(prod.nombre);
-        } catch {
-          setLatestProductName(ultima.uid_etiqueta); // fallback
-        }
-
-        // 3) últimas 4 lecturas → serie
-        const porEpc = await fetchLecturasPorEPC(ultima.uid_etiqueta);
-        const top4 = porEpc
-          .filter(l => l.temperatura != null)
-          .slice(0, 4)     // backend ya ordena desc
-          .reverse();      // cronológico asc para el gráfico
-
-        setLatestSeries(
-          top4.map(l => ({
-            time: new Date(l.timestamp).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }),
-            temp: Number(l.temperatura),
-          }))
-        );
-      } catch (e: any) {
-        setErrorLatest(e?.message || 'Error cargando último registro');
-        setLatest(null);
-        setLatestSeries([]);
-      } finally {
-        setLoadingLatest(false);
       }
     }
-    load(); 
+    
+    fetchSensors();
+    const intervalId = setInterval(fetchSensors, REFRESH_INTERVAL);
+    return () => clearInterval(intervalId);
   }, []);
 
   // =========================
-  // Estados/handlers existentes (asociaciones y productos)
+  // Estados/handlers existentes
   // =========================
   const [isAssociateDialogOpen, setIsAssociateDialogOpen] = useState(false);
   const [selectedSensor, setSelectedSensor] = useState<UnassociatedSensor | null>(null);
@@ -228,7 +229,6 @@ export default function App() {
         if (!selectedProduct) throw new Error("Selecciona un producto");
         await associateUidToProduct(String(selectedProduct), selectedSensor.uid);
       } else {
-        // Crear producto nuevo CON esa etiqueta
         const nombre = newProductName.trim();
         const min = Number(tempRange.min);
         const max = Number(tempRange.max);
@@ -242,22 +242,12 @@ export default function App() {
           uid_etiqueta: selectedSensor.uid,
         });
       }
-
-      // 1) refresca lista de productos
-      await loadProducts();
-
-      // 2) refresca etiquetas sin asociar
+      await loadProducts(false);
+      // Refrescamos sensores manualmente también
       const tags = await fetchUnassociatedTags();
-      const mappedSensors: UnassociatedSensor[] = tags.map(t => ({
-        id: t.uid_etiqueta,
-        uid: t.uid_etiqueta,
-        lastSeen: t.lastTimestamp
-          ? new Date(t.lastTimestamp).toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' })
-          : "—",
-      }));
-      setUnassociatedSensors(mappedSensors);
+      const mappedSensors = tags.map(t => ({ id: t.uid_etiqueta, uid: t.uid_etiqueta }));
+      setUnassociatedSensors(mappedSensors as UnassociatedSensor[]);
 
-      // cierra y limpia
       setIsAssociateDialogOpen(false);
       setSelectedSensor(null);
       setAssociationType("existing");
@@ -274,15 +264,12 @@ export default function App() {
   async function handleViewProductChart(product: RegisteredProduct) {
     setChartError(null);
     setChartLoading(true);
-
     try {
-      // si no hay EPC asociado, abre vacío
       if (!product.sensorUID || product.sensorUID === "—") {
         setSelectedProductForChart({ ...product, temperatureData: [] });
         setIsProductChartDialogOpen(true);
         return;
       }
-
       const lecturas = await fetchLecturasPorEPC(product.sensorUID);
       const series: ChartPoint[] = lecturas
         .filter(l => l.temperatura != null)
@@ -320,13 +307,10 @@ export default function App() {
       await createProducto({
         nombre,
         rango_temp: { min, max },
-        uid_etiqueta: uid ? uid : undefined, // si está vacío, no se asocia sensor
+        uid_etiqueta: uid ? uid : undefined, 
       });
 
-      // refrescar listado de productos del panel
-      await loadProducts();
-
-      // cerrar y limpiar
+      await loadProducts(false);
       setIsNewProductDialogOpen(false);
       setNewProductFormData({ name: "", minTemp: "", maxTemp: "", sensorUID: "" });
     } catch (e: any) {
@@ -341,9 +325,10 @@ export default function App() {
   // =========================
   return (
     <div className="min-h-screen bg-background p-6">
-      <div className="max-w-7xl mx-auto space-y-8">
-        {/* Header con perfil */}
-        <div className="flex items-center space-x-4">
+      <div className="max-w-7xl mx-auto space-y-6">
+        
+        {/* Header */}
+        <div className="flex items-center space-x-4 mb-8">
           <Avatar className="h-16 w-16">
             <AvatarImage src={userData.avatar} alt={userData.name} />
             <AvatarFallback>{userData.name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
@@ -354,11 +339,12 @@ export default function App() {
           </div>
         </div>
 
-        {/* Main Dashboard Grid */}
+        {/* --- GRID SUPERIOR (2 Columnas IZQ | 1 Columna DER) --- */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Latest Registration Section */}
-          <div className="lg:col-span-2 space-y-6">
-            <Card>
+          
+          {/* SECCIÓN 1: ÚLTIMO REGISTRO (Ocupa 2/3 del ancho) */}
+          <div className="lg:col-span-2">
+            <Card className="h-full">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Package className="h-5 w-5" />
@@ -397,7 +383,7 @@ export default function App() {
 
                     <Separator />
 
-                    {/* Temperature Chart */}
+                    {/* Chart */}
                     <div className="space-y-2">
                       <h4 className="font-medium">Temperatura vs Tiempo</h4>
                       <div className="h-64 w-full">
@@ -431,137 +417,37 @@ export default function App() {
             </Card>
           </div>
 
-          {/* Products List (resumen con estados) */}
-          <Dialog open={isProductsDialogOpen} onOpenChange={handleProductsDialogOpenChange}>
-            <DialogTrigger asChild>
-              <div className="rounded-lg border bg-card text-card-foreground shadow-sm cursor-pointer hover:bg-accent/50 transition-colors">
-                <div className="flex flex-col space-y-1.5 p-6">
-                  <h3 className="font-semibold leading-none tracking-tight flex items-center gap-2">
-                    <Package className="h-5 w-5" />
-                    Productos Registrados
-                  </h3>
-                </div>
-                <div className="p-6 pt-0">
-                  {productsLoading ? (
-                    <p className="text-sm text-muted-foreground">Cargando…</p>
-                  ) : productsError ? (
-                    <p className="text-sm text-destructive">Error: {productsError}</p>
-                  ) : products.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No hay productos.</p>
-                  ) : (
-                    <div className="space-y-3">
-                      {products.slice(0, 3).map((product) => (
-                        <div key={product.id} className="flex items-center justify-between p-3 rounded-lg border">
-                          <div className="space-y-1">
-                            <h4 className="font-medium">{product.name}</h4>
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <Thermometer className="h-4 w-4" />
-                              Rango: {product.tempRange}
-                            </div>
-                          </div>
-                          <div className="text-right space-y-1">
-                            <Badge 
-                              variant={product.status === 'normal' ? 'secondary' : 'destructive'}
-                              className="text-xs"
-                            >
-                              {product.status === 'normal' ? 'Normal' : 'Alerta'}
-                            </Badge>
-                            <p className="text-xs text-muted-foreground">{product.registeredAt}</p>
-                          </div>
-                        </div>
-                      ))}
-                      {products.length > 3 && (
-                        <div className="text-center text-sm text-muted-foreground pt-2">
-                          +{products.length - 3} más...
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </DialogTrigger>
-
-            <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-              <DialogHeader>
-                <div className="flex items-center justify-between">
-                  <DialogTitle className="flex items-center gap-2">
-                    <Package className="h-5 w-5" />
-                    Productos Registrados ({products.length})
-                  </DialogTitle>
-                  <Button
-                    onClick={() => setIsNewProductDialogOpen(true)}
-                    className="flex items-center gap-2"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Nuevo Producto
-                  </Button>
-                </div>
-              </DialogHeader>
-
-              {productsLoading ? (
-                <p className="text-sm text-muted-foreground px-4">Cargando productos…</p>
-              ) : productsError ? (
-                <p className="text-sm text-destructive px-4">{productsError}</p>
-              ) : products.length === 0 ? (
-                <p className="text-sm text-muted-foreground px-4">No hay productos registrados.</p>
-              ) : (
-                <div className="space-y-4">
-                  {products.map((product) => (
-                    <Card key={product.id} className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="space-y-2 flex-1">
-                          <div className="flex items-center gap-3">
-                            <h4 className="font-medium">{product.name}</h4>
-                            <Badge 
-                              variant={product.status === 'normal' ? 'secondary' : 'destructive'}
-                              className="text-xs"
-                            >
-                              {product.status === 'normal' ? 'Normal' : 'Alerta'}
-                            </Badge>
-                          </div>
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-muted-foreground">
-                            <div className="flex items-center gap-1">
-                              <Thermometer className="h-4 w-4" />
-                              <span>Rango: {product.tempRange}</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <Clock className="h-4 w-4" />
-                              <span>Último: {product.lastRegistration}</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <Radio className="h-4 w-4" />
-                              <span className="font-mono text-xs">{product.sensorUID}</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              {product.status === 'normal' ? (
-                                <TrendingUp className="h-4 w-4 text-green-600" />
-                              ) : (
-                                <AlertTriangle className="h-4 w-4 text-red-600" />
-                              )}
-                              <span>{product.registeredAt}</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <Button 
-                          variant="outline"
-                          onClick={() => handleViewProductChart(product)}
-                          className="flex items-center gap-2 ml-4"
-                        >
-                          <TrendingUp className="h-4 w-4" />
-                          Ver Gráfico
-                        </Button>
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </DialogContent>
-          </Dialog>
-
-          {/* Sidebar */}
+          {/* SECCIÓN 2: BARRA LATERAL DERECHA (Estadísticas + Etiquetas sin asociar) */}
           <div className="space-y-6">
-            {/* Unassociated Sensors */}
+            
+            {/* 2.1 Estadísticas Rápidas (Arriba derecha) */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Estadísticas Rápidas</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Total Productos</span>
+                  <span className="font-medium">{products.length}</span>
+                </div>
+                <Separator />
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">En Rango Normal</span>
+                  <span className="font-medium text-green-600">
+                    {products.filter(p => p.status === 'normal').length}
+                  </span>
+                </div>
+                <Separator />
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Con Alerta</span>
+                  <span className="font-medium text-red-600">
+                    {products.filter(p => p.status === 'warning').length}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 2.2 Etiquetas sin Asociar (Debajo de estadísticas) */}
             <Dialog>
               <DialogTrigger asChild>
                 <div className="rounded-lg border bg-card text-card-foreground shadow-sm cursor-pointer hover:bg-accent/50 transition-colors">
@@ -577,9 +463,11 @@ export default function App() {
                       <p className="text-sm text-muted-foreground">
                         Sensores disponibles para asociar
                       </p>
-                      <Badge variant="outline" className="mt-2">
-                        Requiere atención
-                      </Badge>
+                      {unassociatedSensors.length > 0 && (
+                        <Badge variant="outline" className="mt-2 text-yellow-600 border-yellow-600">
+                          Requiere atención
+                        </Badge>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -623,156 +511,268 @@ export default function App() {
               </DialogContent>
             </Dialog>
 
-            {/* Association Dialog */}
-            <Dialog open={isAssociateDialogOpen} onOpenChange={setIsAssociateDialogOpen}>
-              <DialogContent className="max-w-md">
-                <DialogHeader>
-                  <DialogTitle>
-                    Asociar Sensor {selectedSensor?.uid}
-                  </DialogTitle>
-                </DialogHeader>
+          </div>
+        </div>
 
-                <div className="space-y-6">
-                  {/* Tipo de Asociación */}
-                  <div className="space-y-3">
-                    <Label>Tipo de Asociación</Label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button
-                        variant={associationType === "existing" ? "default" : "outline"}
-                        onClick={() => setAssociationType("existing")}
-                        className="flex items-center gap-2"
-                      >
-                        <Package className="h-4 w-4" />
-                        Producto Existente
-                      </Button>
-                      <Button
-                        variant={associationType === "new" ? "default" : "outline"}
-                        onClick={() => setAssociationType("new")}
-                        className="flex items-center gap-2"
-                      >
-                        <Plus className="h-4 w-4" />
-                        Nuevo Producto
-                      </Button>
-                    </div>
-                  </div>
+        {/* --- GRID INFERIOR (ANCHO COMPLETO) --- */}
+        {/* SECCIÓN 3: PRODUCTOS REGISTRADOS (Estilo visual lista vertical) */}
+        <div className="w-full">
+          <Dialog open={isProductsDialogOpen} onOpenChange={handleProductsDialogOpenChange}>
+            <DialogTrigger asChild>
+              {/* Contenedor principal estilo "Card" clickable */}
+              <div className="rounded-xl border bg-card text-card-foreground shadow-sm cursor-pointer hover:bg-accent/50 transition-colors w-full p-6">
+                
+                {/* Título de la sección */}
+                <div className="flex items-center gap-2 mb-6">
+                  <Package className="h-5 w-5" />
+                  <h3 className="font-semibold text-lg">Productos Registrados</h3>
+                </div>
 
-                  {/* Producto existente */}
-                  {associationType === "existing" && (
-                    <div className="space-y-2">
-                      <Label htmlFor="product-select">Seleccionar Producto</Label>
-                      <Select value={selectedProduct} onValueChange={setSelectedProduct}>
-                        <SelectTrigger id="product-select">
-                          <SelectValue placeholder="Elegir producto existente" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {products.map((product) => (
-                            <SelectItem key={product.id} value={product.id.toString()}>
-                              {product.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-
-                  {/* Nuevo producto */}
-                  {associationType === "new" && (
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="product-name">Nombre del Producto</Label>
-                        <Input
-                          id="product-name"
-                          value={newProductName}
-                          onChange={(e) => setNewProductName(e.target.value)}
-                          placeholder="Ej: Vacuna Hepatitis A"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Rango de Temperatura</Label>
-                        <div className="grid grid-cols-2 gap-2">
+                {/* Contenido: Lista de productos */}
+                <div className="space-y-4">
+                  {productsLoading ? (
+                    <p className="text-sm text-muted-foreground">Cargando productos...</p>
+                  ) : products.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No hay productos registrados.</p>
+                  ) : (
+                    <>
+                      {/* Renderizamos solo los primeros 3 para la vista previa */}
+                      {products.slice(0, 3).map((product) => (
+                        <div 
+                          key={product.id} 
+                          className="flex items-center justify-between p-4 rounded-xl border bg-background hover:border-primary/50 transition-colors"
+                        >
+                          {/* Izquierda: Nombre y Rango */}
                           <div className="space-y-1">
-                            <Label htmlFor="temp-min" className="text-xs">Mínima (°C)</Label>
-                            <Input
-                              id="temp-min"
-                              type="number"
-                              value={tempRange.min}
-                              onChange={(e) => setTempRange(prev => ({ ...prev, min: e.target.value }))}
-                              placeholder="2"
-                            />
+                            <h4 className="font-medium text-base">{product.name}</h4>
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <Thermometer className="h-4 w-4 opacity-70" />
+                              <span>Rango: {product.tempRange}</span>
+                            </div>
                           </div>
-                          <div className="space-y-1">
-                            <Label htmlFor="temp-max" className="text-xs">Máxima (°C)</Label>
-                            <Input
-                              id="temp-max"
-                              type="number"
-                              value={tempRange.max}
-                              onChange={(e) => setTempRange(prev => ({ ...prev, max: e.target.value }))}
-                              placeholder="8"
-                            />
+
+                          {/* Derecha: Estado y Tiempo */}
+                          <div className="text-right space-y-1">
+                            <Badge 
+                              variant={product.status === 'normal' ? 'secondary' : 'destructive'}
+                              className="px-3 py-0.5 font-normal"
+                            >
+                              {product.status === 'normal' ? 'Normal' : 'Alerta'}
+                            </Badge>
+                            <p className="text-xs text-muted-foreground">
+                              {product.registeredAt}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* Texto "+X más..." centrado abajo */}
+                      {products.length > 3 && (
+                        <div className="text-center pt-2">
+                          <span className="text-sm text-muted-foreground">
+                            +{products.length - 3} más...
+                          </span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            </DialogTrigger>
+
+            {/* --- CONTENIDO DEL DIÁLOGO (Al hacer clic) --- */}
+            <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+              <DialogHeader>
+                <div className="flex items-center justify-between">
+                  <DialogTitle className="flex items-center gap-2">
+                    <Package className="h-5 w-5" />
+                    Productos Registrados ({products.length})
+                  </DialogTitle>
+                  <Button
+                    onClick={(e: MouseEvent<HTMLButtonElement>) => {
+                      e.stopPropagation();
+                      setIsNewProductDialogOpen(true);
+                    }}
+                    className="flex items-center gap-2"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Nuevo Producto
+                  </Button>
+                </div>
+              </DialogHeader>
+
+              {/* Lista Completa dentro del Modal */}
+              <div className="space-y-4 mt-4">
+                {products.map((product) => (
+                  <Card key={product.id} className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-2 flex-1">
+                        <div className="flex items-center gap-3">
+                          <h4 className="font-medium">{product.name}</h4>
+                          <Badge 
+                            variant={product.status === 'normal' ? 'secondary' : 'destructive'}
+                          >
+                            {product.status === 'normal' ? 'Normal' : 'Alerta'}
+                          </Badge>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-muted-foreground">
+                          <div className="flex items-center gap-1">
+                            <Thermometer className="h-4 w-4" />
+                            <span>Rango: {product.tempRange}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Clock className="h-4 w-4" />
+                            <span>Último: {product.lastRegistration}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Radio className="h-4 w-4" />
+                            <span className="font-mono text-xs">{product.sensorUID}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            {product.status === 'normal' ? (
+                              <TrendingUp className="h-4 w-4 text-green-600" />
+                            ) : (
+                              <AlertTriangle className="h-4 w-4 text-red-600" />
+                            )}
+                            <span>{product.registeredAt}</span>
                           </div>
                         </div>
                       </div>
+
+                      <Button 
+                        variant="outline"
+                        onClick={() => handleViewProductChart(product)}
+                        className="flex items-center gap-2 ml-4"
+                      >
+                        <TrendingUp className="h-4 w-4" />
+                        Ver Gráfico
+                      </Button>
                     </div>
-                  )}
+                  </Card>
+                ))}
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
 
-                  {/* Botones */}
-                  {associateError && (
-                    <p className="text-sm text-destructive">{associateError}</p>
-                  )}
+        {/* --- DIÁLOGOS AUXILIARES --- */}
+        
+        {/* Associate Dialog */}
+        <Dialog open={isAssociateDialogOpen} onOpenChange={setIsAssociateDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>
+                Asociar Sensor {selectedSensor?.uid}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-6">
+              <div className="space-y-3">
+                <Label>Tipo de Asociación</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    variant={associationType === "existing" ? "default" : "outline"}
+                    onClick={() => setAssociationType("existing")}
+                    className="flex items-center gap-2"
+                  >
+                    <Package className="h-4 w-4" />
+                    Producto Existente
+                  </Button>
+                  <Button
+                    variant={associationType === "new" ? "default" : "outline"}
+                    onClick={() => setAssociationType("new")}
+                    className="flex items-center gap-2"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Nuevo Producto
+                  </Button>
+                </div>
+              </div>
 
-                  <div className="flex gap-2 pt-4">
-                    <Button
-                      variant="outline"
-                      onClick={() => setIsAssociateDialogOpen(false)}
-                      className="flex-1"
-                      disabled={associateLoading}
-                    >
-                      Cancelar
-                    </Button>
-                    <Button
-                      onClick={handleConfirmAssociation}
-                      disabled={
-                        associateLoading ||
-                        (associationType === "existing" && !selectedProduct) ||
-                        (associationType === "new" && (!newProductName || !tempRange.min || !tempRange.max))
-                      }
-                      className="flex-1"
-                    >
-                      {associateLoading ? "Guardando…" : "Confirmar Asociación"}
-                    </Button>
+              {associationType === "existing" && (
+                <div className="space-y-2">
+                  <Label htmlFor="product-select">Seleccionar Producto</Label>
+                  <Select value={selectedProduct} onValueChange={setSelectedProduct}>
+                    <SelectTrigger id="product-select">
+                      <SelectValue placeholder="Elegir producto existente" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {products.map((product) => (
+                        <SelectItem key={product.id} value={product.id.toString()}>
+                          {product.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {associationType === "new" && (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="product-name">Nombre del Producto</Label>
+                    <Input
+                      id="product-name"
+                      value={newProductName}
+                      onChange={(e) => setNewProductName(e.target.value)}
+                      placeholder="Ej: Vacuna Hepatitis A"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Rango de Temperatura</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <Label htmlFor="temp-min" className="text-xs">Mínima (°C)</Label>
+                        <Input
+                          id="temp-min"
+                          type="number"
+                          value={tempRange.min}
+                          onChange={(e) => setTempRange(prev => ({ ...prev, min: e.target.value }))}
+                          placeholder="2"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="temp-max" className="text-xs">Máxima (°C)</Label>
+                        <Input
+                          id="temp-max"
+                          type="number"
+                          value={tempRange.max}
+                          onChange={(e) => setTempRange(prev => ({ ...prev, max: e.target.value }))}
+                          placeholder="8"
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </DialogContent>
-            </Dialog>
+              )}
 
-            {/* Quick Stats */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Estadísticas Rápidas</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Total Productos</span>
-                  <span className="font-medium">{products.length}</span>
-                </div>
-                <Separator />
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">En Rango Normal</span>
-                  <span className="font-medium text-green-600">
-                    {products.filter(p => p.status === 'normal').length}
-                  </span>
-                </div>
-                <Separator />
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Con Alerta</span>
-                  <span className="font-medium text-red-600">
-                    {products.filter(p => p.status === 'warning').length}
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
+              {associateError && (
+                <p className="text-sm text-destructive">{associateError}</p>
+              )}
+
+              <div className="flex gap-2 pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsAssociateDialogOpen(false)}
+                  className="flex-1"
+                  disabled={associateLoading}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleConfirmAssociation}
+                  disabled={
+                    associateLoading ||
+                    (associationType === "existing" && !selectedProduct) ||
+                    (associationType === "new" && (!newProductName || !tempRange.min || !tempRange.max))
+                  }
+                  className="flex-1"
+                >
+                  {associateLoading ? "Guardando…" : "Confirmar Asociación"}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* New Product Registration Dialog */}
         <Dialog open={isNewProductDialogOpen} onOpenChange={setIsNewProductDialogOpen}>
@@ -881,7 +881,6 @@ export default function App() {
 
             {selectedProductForChart && (
               <div className="space-y-6">
-                {/* Info del producto */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted/50 rounded-lg">
                   <div className="space-y-1">
                     <p className="text-sm text-muted-foreground">Rango Objetivo</p>
@@ -905,7 +904,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Gráfico */}
                 <div className="space-y-4">
                   <h4 className="font-medium">Historial de Temperatura vs Tiempo</h4>
 
@@ -947,7 +945,6 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Alerta si corresponde */}
                 {selectedProductForChart.status === 'warning' && (
                   <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
                     <div className="flex items-center gap-2 text-destructive">
